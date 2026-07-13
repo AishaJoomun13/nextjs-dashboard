@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation';
 import postgres from 'postgres';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
+// Import this helper to recognize Next.js internal redirect signals
+import { isRedirectError } from 'next/dist/client/components/redirect-error';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -122,8 +124,20 @@ export async function authenticate(
     formData: FormData,
 ) {
     try {
-        await signIn('credentials', formData)
+        // Safely extract the target URL, using '/dashboard' as a strict fallback
+        const callbackUrl = (formData.get('callbackUrl') as string) || '/dashboard';
+        
+        // Pass credentials as an object and explicitly assign the redirect address
+        await signIn('credentials', {
+            ...Object.fromEntries(formData),
+            redirectTo: callbackUrl,
+        });
     } catch (error) {
+        // If it's a redirect error, let Next.js process it normally
+        if (isRedirectError(error)) {
+            throw error;
+        }
+
         if (error instanceof AuthError) {
             switch (error.type) {
                 case 'CredentialsSignin':
@@ -134,5 +148,4 @@ export async function authenticate(
         }
         throw error;
     }
-    
 }
